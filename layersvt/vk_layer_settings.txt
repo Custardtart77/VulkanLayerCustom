@@ -1,0 +1,108 @@
+# The settings in this file can be used to configure the behavior of
+# layers in this repository.
+#
+# Note that this file is not regulary updated, so not all possible layer
+# settings may be listed, and some layer settings may even be obsolete.
+
+# VK_LAYER_CUSTOM
+
+# Output Range
+# =====================
+# <LayerIdentifier>.output_range
+# Comma separated list of frames to output or a range of frames with a start,
+# count, and optional interval separated by a dash. A count of 0 will output
+# every frame after the start of the range. Example: "5-8-2" will output frame
+# 5, continue until frame 13, dumping every other frame. Example: "3,8-2" will
+# output frames 3, 8, and 9.
+custom.output_range = 0-0
+
+# Output Format
+# =====================
+# <LayerIdentifier>.output_format
+# Specifies the format used for output; can be HTML, JSON, or  Text (default --
+# outputs plain text)
+custom.output_format = text
+
+# Output to File
+# =====================
+# <LayerIdentifier>.file
+# Setting this to true indicates that output should be written to file instead
+# of stdout
+custom.file = false
+
+# Log Filename
+# =====================
+# <LayerIdentifier>.log_filename
+# Specifies the file to dump to when output files are enabled
+#custom.log_filename = stdout
+
+# Log Flush After Write
+# =====================
+# <LayerIdentifier>.flush
+# Setting this to true causes IO to be flushed after each API call that is
+# written
+custom.flush = true
+
+# Name Size
+# =====================
+# <LayerIdentifier>.name_size
+# The number of characters the name of a variable should consume, assuming more
+# are not required
+custom.name_size = 32
+
+# Show Types
+# =====================
+# <LayerIdentifier>.show_types
+# Dump types in addition to values
+custom.show_types = true
+
+# Type Size
+# =====================
+# <LayerIdentifier>.type_size
+# The number of characters the name of a type should consume, assuming more are
+# not required
+custom.type_size = 0
+
+# Show Timestamp
+# =====================
+# <LayerIdentifier>.show_timestamp
+# Show the timestamp of function calls since start in microseconds
+custom.show_timestamp = false
+
+# Show Shader
+# =====================
+# <LayerIdentifier>.show_shader
+# Dump the shader binary code in pCode as an hex array which can be viewed in https://www.khronos.org/spir/visualizer/
+custom.show_shader = false
+
+# Show Parameter Details
+# =====================
+# <LayerIdentifier>.detailed
+# Dump parameter details in addition to API calls
+custom.detailed = true
+
+# Hide Addresses
+# =====================
+# <LayerIdentifier>.no_addr
+# Dump "address" in place of hex addresses
+custom.no_addr = false
+
+# Use Spaces
+# =====================
+# <LayerIdentifier>.use_spaces
+# Setting this to true causes all tab characters to be replaced with spaces
+custom.use_spaces = true
+
+# Indent Size
+# =====================
+# <LayerIdentifier>.indent_size
+# Specifies the number of spaces that a tab is equal to
+custom.indent_size = 4
+
+# Show Thread and Frame
+# =====================
+# <LayerIdentifier>.show_thread_and_frame
+# Show the thread and frame of each function called
+custom.show_thread_and_frame = true
+
+

@@ -1,0 +1,126 @@
+{
+    "repos": [
+        {
+            "name": "Vulkan-Headers",
+            "url": "https://github.com/KhronosGroup/Vulkan-Headers.git",
+            "sub_dir": "Vulkan-Headers",
+            "build_dir": "Vulkan-Headers/build",
+            "install_dir": "Vulkan-Headers/build/install",
+            "commit": "v1.4.350",
+            "cmake_options": [
+                "-DVULKAN_HEADERS_ENABLE_MODULE=OFF"
+            ]
+        },
+        {
+            "name": "Vulkan-Utility-Libraries",
+            "url": "https://github.com/KhronosGroup/Vulkan-Utility-Libraries",
+            "sub_dir": "Vulkan-Utility-Libraries",
+            "build_dir": "Vulkan-Utility-Libraries/build",
+            "install_dir": "Vulkan-Utility-Libraries/build/install",
+            "commit": "v1.4.350",
+            "deps": [
+                {
+                    "var_name": "VULKAN_HEADERS_INSTALL_DIR",
+                    "repo_name": "Vulkan-Headers"
+                }
+            ]
+        },
+        {
+            "name": "Vulkan-Loader",
+            "url": "https://github.com/KhronosGroup/Vulkan-Loader.git",
+            "sub_dir": "Vulkan-Loader",
+            "build_dir": "Vulkan-Loader/build",
+            "install_dir": "Vulkan-Loader/build/install",
+            "commit": "v1.4.350",
+            "deps": [
+                {
+                    "var_name": "VULKAN_HEADERS_INSTALL_DIR",
+                    "repo_name": "Vulkan-Headers"
+                }
+            ],
+            "build_platforms": [
+                "windows",
+                "linux",
+                "darwin"
+            ]
+        },
+        {
+            "name": "Vulkan-Tools",
+            "url": "https://github.com/KhronosGroup/Vulkan-Tools.git",
+            "sub_dir": "Vulkan-Tools",
+            "build_dir": "Vulkan-Tools/build",
+            "install_dir": "Vulkan-Tools/build/install",
+            "commit": "v1.4.350",
+            "deps": [
+                {
+                    "var_name": "VULKAN_HEADERS_INSTALL_DIR",
+                    "repo_name": "Vulkan-Headers"
+                },
+                {
+                    "var_name": "VULKAN_LOADER_INSTALL_DIR",
+                    "repo_name": "Vulkan-Loader"
+                }
+            ],
+            "cmake_options": [
+                "-DBUILD_CUBE=OFF"
+            ],
+            "build_platforms": [
+                "windows",
+                "linux"
+            ],
+            "optional": [
+                "tests"
+            ]
+        },
+        {
+            "name": "jsoncpp",
+            "url": "https://github.com/open-source-parsers/jsoncpp.git",
+            "sub_dir": "jsoncpp",
+            "build_dir": "jsoncpp/build",
+            "install_dir": "jsoncpp/build/install",
+            "commit": "1.9.6",
+            "cmake_options": [
+                "-DCMAKE_POSITION_INDEPENDENT_CODE=ON",
+                "-DJSONCPP_WITH_TESTS=OFF",
+                "-DJSONCPP_WITH_POST_BUILD_UNITTEST=OFF",
+                "-DJSONCPP_WITH_WARNING_AS_ERROR=OFF",
+                "-DJSONCPP_WITH_PKGCONFIG_SUPPORT=ON",
+                "-DBUILD_SHARED_LIBS=OFF",
+                "-DBUILD_STATIC_LIBS=ON",
+                "-DBUILD_OBJECT_LIBS=OFF"
+            ]
+        },
+        {
+            "name": "valijson",
+            "url": "https://github.com/tristanpenman/valijson.git",
+            "sub_dir": "valijson",
+            "build_dir": "valijson/build",
+            "install_dir": "valijson/build/install",
+            "commit": "v1.0.2"
+        },
+        {
+            "name": "googletest",
+            "url": "https://github.com/google/googletest.git",
+            "sub_dir": "googletest",
+            "build_dir": "googletest/build",
+            "install_dir": "googletest/build/install",
+            "cmake_options": [
+                "-DBUILD_GMOCK=OFF",
+                "-Dgtest_force_shared_crt=ON",
+                "-DBUILD_SHARED_LIBS=OFF"
+            ],
+            "commit": "v1.14.0",
+            "optional": [
+                "tests"
+            ]
+        }
+    ],
+    "install_names": {
+        "Vulkan-Headers": "VULKAN_HEADERS_INSTALL_DIR",
+        "Vulkan-Utility-Libraries": "VULKAN_UTILITY_LIBRARIES_INSTALL_DIR",
+        "Vulkan-Loader": "VULKAN_LOADER_INSTALL_DIR",
+        "jsoncpp": "JSONCPP_INSTALL_DIR",
+        "valijson": "VALIJSON_INSTALL_DIR",
+        "googletest": "GOOGLETEST_INSTALL_DIR"
+    }
+}
