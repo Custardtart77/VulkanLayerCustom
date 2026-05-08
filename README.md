@@ -6,6 +6,12 @@ This is a custom Vulkan layer for testing, Which is implemented to hook vulkan a
 
 This work is modified from [VulkanTools](https://github.com/LunarG/VulkanTools) based on vulkan 1.4.350
 
+## About This Branch
+This branch is used to Capture the Vulkan API trace eventin perfetto/systrace tool for android. 
+
+![Vulkan API trace in Perfetto](layersvt/images/trace_in_perfetto.png)
+
+
 ## Build For Android
 CMake >= 3.22.1
 NDK r25+
@@ -95,10 +101,10 @@ https://developer.android.com/ndk/guides/graphics/validation-layer#load-layers
 Enable layer for single application
 
 ````
-adb push libVkLayer_custom.so /data/user/0/com.xxx.xxx/
+adb push build/layersvt/libVkLayer_custom.so /data/user/0/com.YourCompany.third_ue56/
 
 adb shell settings put global enable_gpu_debug_layers 1
-adb shell settings put global gpu_debug_app com.xxx.xxx
+adb shell settings put global gpu_debug_app com.YourCompany.third_ue56
 adb shell settings put global gpu_debug_layers VK_LAYER_CUSTOM
 
 adb shell settings list global | grep gpu

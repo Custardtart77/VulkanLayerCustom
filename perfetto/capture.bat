@@ -1,0 +1,1 @@
+python record_android_trace.py -o trace_file.perfetto-trace -t 5s -a com.YourCompany.third_ue56 -b 512mb sched freq idle am wm gfx view binder_driver hal dalvik camera input res memory
