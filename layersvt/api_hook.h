@@ -82,6 +82,17 @@
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
+
+inline std::string ApiHookAndroidGetProcessPackageName() {
+    std::ifstream cmdline("/proc/self/cmdline");
+    if (!cmdline) {
+        return {};
+    }
+    std::string name;
+    std::getline(cmdline, name, '\0');
+    return name;
+}
+
 #endif  // ANDROID
 
 #if defined(__GNUC__) && __GNUC__ >= 4
@@ -221,7 +232,25 @@ class ApiHookInstance {
 
     void initLayerSettings(const VkInstanceCreateInfo *pCreateInfo, const VkAllocationCallbacks *pAllocator) {
         this->hook_settings.init(pCreateInfo, pAllocator);
+
+#ifdef __ANDROID__
+        if (!out_file.is_open()) {
+            std::string pkg = ApiHookAndroidGetProcessPackageName();
+            if (pkg.empty()) {
+                pkg = "unknown";
+            }
+            const std::string path = "/sdcard/Android/data/" + pkg + "/files/LayerCustom.txt";
+            out_file.open(path, std::ios::out | std::ios::trunc);
+            if (out_file.fail()) {
+                LOGD("could not open the file! path=%s", path.c_str());
+            } else {
+                LOGD("open the file! path=%s", path.c_str());
+                out_file << "LayerCustom.txt Create Success." << std::endl;
+            }
+        }
+#endif
     }
+    std::ofstream &outfile() { return out_file; }
 
     std::mutex &outputMutex() { return output_mutex; }
 
@@ -326,4 +355,6 @@ class ApiHookInstance {
     // respective dynamic state is set.
     bool is_dynamic_scissor;
     bool is_dynamic_viewport;
+
+    std::ofstream out_file;
 };
