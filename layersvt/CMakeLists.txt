@@ -63,11 +63,18 @@ if(BUILD_APIDUMP)
         vk_layer_table.cpp
         vk_layer_table.h
         json/VkLayer_custom.json.in
+        imgui/imgui.cpp
+        imgui/imgui_draw.cpp
+        imgui/imgui_tables.cpp
+        imgui/imgui_widgets.cpp
+        imgui/imgui_demo.cpp
+        imgui/imgui_impl_vulkan.cpp
     )
 
     target_include_directories(VkLayer_custom PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_BINARY_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/imgui
     )
 
     if(CMAKE_SYSTEM_NAME MATCHES "Linux|BSD|DragonFly|GNU")

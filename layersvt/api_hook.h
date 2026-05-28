@@ -64,6 +64,10 @@
 #include <unordered_set>
 #include <utility>
 
+// ImGui Vulkan backend
+#include "imgui/imgui.h"
+#include "imgui/imgui_impl_vulkan.h"
+
 #if defined(_WIN32) && !defined(NDEBUG)
 #include <crtdbg.h>
 #endif
@@ -327,6 +331,134 @@ class ApiHookInstance {
         return vk_instance_map.at(phys_dev);
     }
 
+    // 存储 device 创建信息，用于延迟 ImGui 初始化
+    void setDeviceCreateInfo(VkPhysicalDevice phys_dev, VkDevice device, const VkDeviceCreateInfo* pCreateInfo) {
+        imgui_phys_dev = phys_dev;
+        imgui_pending_device = device;
+        // 查找 graphics queue family index
+        for (uint32_t i = 0; i < pCreateInfo->queueCreateInfoCount; i++) {
+            if (pCreateInfo->pQueueCreateInfos[i].queueCount > 0) {
+                imgui_queue_family_index = i;
+                break;
+            }
+        }
+        imgui_pending_init = true;
+    }
+
+    // 当 queue 被获取时尝试完成 ImGui 初始化
+    void TryInitImGuiWithQueue(VkDevice device, VkQueue queue) {
+        if (imgui_pending_init && imgui_pending_device == device) {
+            VkInstance instance = get_vk_instance(imgui_phys_dev);
+            InitImGuiVulkan(instance, imgui_phys_dev, device, imgui_queue_family_index, queue);
+            imgui_pending_init = false;
+        }
+    }
+
+    // --- ImGui Vulkan 初始化 ---
+    // 在 vkCreateDevice 之后调用，使用 hook 捕获的 Vulkan 资源
+    void InitImGuiVulkan(VkInstance instance, VkPhysicalDevice physicalDevice, VkDevice device,
+                         uint32_t queueFamilyIndex, VkQueue queue) {
+        if (is_imgui_init) return;
+
+        // 创建 ImGui 上下文
+        IMGUI_CHECKVERSION();
+        ImGui::CreateContext();
+        ImGuiIO& io = ImGui::GetIO();
+        io.IniFilename = nullptr;  // 不保存/加载 ini 文件
+
+        // 对于没有窗口系统的 Layer hook，不需要 Platform Backend
+        // 直接设置 display size 为一个默认值（后续可以通过 hook swapchain 信息来更新）
+        io.DisplaySize = ImVec2(1920, 1080);
+
+        // 由于项目定义了 VK_NO_PROTOTYPES，需要先加载 Vulkan 函数指针
+        // 使用 layer 内部的 instance dispatch table 来获取函数指针
+        uint32_t api_version = VK_API_VERSION_1_3;
+        auto inst_disp = instance_dispatch_table(instance);
+        ImGui_ImplVulkan_LoadFunctions(api_version,
+            [](const char* function_name, void* user_data) {
+                auto* table = static_cast<VkuInstanceDispatchTable*>(user_data);
+                return table->GetInstanceProcAddr(VK_NULL_HANDLE, function_name);
+            },
+            inst_disp);
+
+        // 初始化 Vulkan 渲染后端
+        ImGui_ImplVulkan_InitInfo init_info = {};
+        init_info.Instance = instance;
+        init_info.PhysicalDevice = physicalDevice;
+        init_info.Device = device;
+        init_info.QueueFamily = queueFamilyIndex;
+        init_info.Queue = queue;
+        init_info.DescriptorPoolSize = 1;       // 让后端自动创建 descriptor pool
+        init_info.MinImageCount = 2;
+        init_info.ImageCount = 2;
+        init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+        init_info.UseDynamicRendering = false;  // 先不使用 dynamic rendering
+        // 不设置 RenderPass，稍后由 hook 传入实际的 render pass
+        init_info.Allocator = nullptr;
+
+        if (!ImGui_ImplVulkan_Init(&init_info)) {
+            return;
+        }
+
+        is_imgui_init = true;
+        imgui_device = device;
+        LOGD("ImGui Vulkan initialized successfully");
+    }
+
+    // 关闭 ImGui
+    void ShutdownImGuiVulkan() {
+        if (is_imgui_init) {
+            ImGui_ImplVulkan_Shutdown();
+            ImGui::DestroyContext();
+            is_imgui_init = false;
+            imgui_device = VK_NULL_HANDLE;
+        }
+    }
+
+    // 设置 ImGui 渲染所需的 render pass 信息
+    // 在渲染之前由 hook (如 vkCmdBeginRenderPass) 设置
+    void SetImGuiRenderPass(VkRenderPass renderPass, uint32_t subpass) {
+        imgui_render_pass = renderPass;
+        imgui_subpass = subpass;
+        imgui_pipeline_needs_create = true;
+    }
+
+    void Render(VkCommandBuffer commandBuffer) {
+        if (!is_imgui_init) return;
+
+        // 如果没有设置 render pass，无法渲染
+        if (imgui_render_pass == VK_NULL_HANDLE) return;
+
+        // 如果需要重新创建 pipeline（render pass 变化时）
+        if (imgui_pipeline_needs_create) {
+            ImGui_ImplVulkan_PipelineInfo pipeline_info = {};
+            pipeline_info.RenderPass = imgui_render_pass;
+            pipeline_info.Subpass = imgui_subpass;
+            pipeline_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+            ImGui_ImplVulkan_CreateMainPipeline(&pipeline_info);
+            imgui_pipeline_needs_create = false;
+        }
+
+        // 开始新帧
+        ImGui_ImplVulkan_NewFrame();
+        ImGui::NewFrame();
+
+        // 你的 UI 内容
+        ImGui::Begin("LayerCustom");
+        ImGui::Text("Hello, Vulkan Layer!");
+        ImGui::Text("Frame: %llu", static_cast<unsigned long long>(frame_count));
+        ImGui::End();
+
+        // 渲染
+        ImGui::Render();
+        ImDrawData* draw_data = ImGui::GetDrawData();
+        if (draw_data) {
+            ImGui_ImplVulkan_RenderDrawData(draw_data, commandBuffer);
+        }
+
+        frame_count++;
+    }
+
    private:
     ApiHookSettings hook_settings;
     std::mutex output_mutex;
@@ -357,4 +489,17 @@ class ApiHookInstance {
     bool is_dynamic_viewport;
 
     std::ofstream out_file;
+
+    // --- ImGui 相关 ---
+    bool is_imgui_init = false;
+    VkDevice imgui_device = VK_NULL_HANDLE;
+    VkRenderPass imgui_render_pass = VK_NULL_HANDLE;
+    uint32_t imgui_subpass = 0;
+    bool imgui_pipeline_needs_create = false;
+
+    // 延迟初始化：device 已创建但 queue 尚未获取
+    bool imgui_pending_init = false;
+    VkPhysicalDevice imgui_phys_dev = VK_NULL_HANDLE;
+    VkDevice imgui_pending_device = VK_NULL_HANDLE;
+    uint32_t imgui_queue_family_index = 0;
 };

@@ -91,6 +91,9 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateDevice(VkPhysicalDevice physicalDevice, c
     VkResult result = fpCreateDevice(physicalDevice, pCreateInfo, pAllocator, pDevice);
     if (result == VK_SUCCESS) {
         initDeviceTable(*pDevice, fpGetDeviceProcAddr);
+
+        // 存储 device 创建信息，等待 queue 获取后初始化 ImGui
+        ApiHookInstance::current().setDeviceCreateInfo(physicalDevice, *pDevice, pCreateInfo);
     }
 
     return result;
