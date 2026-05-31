@@ -170,6 +170,47 @@ static const char *GetDefaultPrefix() {
 #endif
 }
 
+
+class SwapchainRenderData {
+   public:
+    std::vector<VkImage> image;
+    std::vector<VkImageView> image_view;
+    std::vector<VkFramebuffer> framebuffer;
+
+    VkSwapchainKHR swap_chain;
+    VkDevice device;
+    VkRenderPass render_pass;
+    uint32_t image_count;
+
+    std::vector<VkCommandBuffer> command_buffer;
+    std::vector<VkFence> fence;
+
+    std::vector<VkSemaphore> render_finished_semaphore;
+
+
+    SwapchainRenderData(VkDevice, VkSwapchainKHR swapchain) : swap_chain(swapchain) {}
+};
+
+class DeviceRenderData {
+   public:
+   VkDevice device;
+   VkPhysicalDevice physical_device;
+    uint32_t queue_family_index;
+    VkQueue queue;
+    VkCommandPool command_pool;
+
+    SwapchainRenderData *swapchain_render_data = nullptr;
+
+    DeviceRenderData(VkDevice device, VkQueue queue, uint32_t queueFamilyIndex) : device(device), queue(queue), queue_family_index(queueFamilyIndex) {
+        VkCommandPoolCreateInfo command_pool_create_info = {};
+        command_pool_create_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+        command_pool_create_info.queueFamilyIndex = queue_family_index;
+        command_pool_create_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+        device_dispatch_table(device)->CreateCommandPool(device, &command_pool_create_info, nullptr, &command_pool);
+    }
+
+};
+
 class ApiHookSettings {
    public:
     ApiHookSettings() {
@@ -331,26 +372,17 @@ class ApiHookInstance {
         return vk_instance_map.at(phys_dev);
     }
 
-    // 存储 device 创建信息，用于延迟 ImGui 初始化
-    void setDeviceCreateInfo(VkPhysicalDevice phys_dev, VkDevice device, const VkDeviceCreateInfo* pCreateInfo) {
-        imgui_phys_dev = phys_dev;
-        imgui_pending_device = device;
-        // 查找 graphics queue family index
-        for (uint32_t i = 0; i < pCreateInfo->queueCreateInfoCount; i++) {
-            if (pCreateInfo->pQueueCreateInfos[i].queueCount > 0) {
-                imgui_queue_family_index = i;
-                break;
-            }
-        }
-        imgui_pending_init = true;
+    void PostCreateSwapchainKHR(VkDevice device, const VkSwapchainCreateInfoKHR* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkSwapchainKHR* pSwapchain) {
+        
+        DeviceRenderData* device_render_data = GetDeviceRenderData(device);
+        device_render_data->swapchain_render_data = new SwapchainRenderData(device, *pSwapchain);
     }
 
-    // 当 queue 被获取时尝试完成 ImGui 初始化
-    void TryInitImGuiWithQueue(VkDevice device, VkQueue queue) {
-        if (imgui_pending_init && imgui_pending_device == device) {
-            VkInstance instance = get_vk_instance(imgui_phys_dev);
-            InitImGuiVulkan(instance, imgui_phys_dev, device, imgui_queue_family_index, queue);
-            imgui_pending_init = false;
+    void PostGetDeviceQueue(VkDevice device, uint32_t queueFamilyIndex, uint32_t queueIndex, VkQueue* pQueue) {
+        queue_map[*pQueue] = new DeviceRenderData(device, *pQueue, queueFamilyIndex);
+        if (is_imgui_init) {
+            // InitImGuiVulkan(instance, imgui_phys_dev, device, imgui_queue_family_index, queue);
+            is_imgui_init = false;
         }
     }
 
@@ -388,21 +420,24 @@ class ApiHookInstance {
         init_info.Device = device;
         init_info.QueueFamily = queueFamilyIndex;
         init_info.Queue = queue;
-        init_info.DescriptorPoolSize = 1;       // 让后端自动创建 descriptor pool
-        init_info.MinImageCount = 2;
+        //init_info.ApiVersion = VK_API_VERSION_1_3;              // Pass in your value of VkApplicationInfo::apiVersion, otherwise will default to header version.
+
+        init_info.PipelineCache = nullptr;
+        // init_info.DescriptorPool = g_DescriptorPool;
+        // init_info.MinImageCount = g_MinImageCount;
         init_info.ImageCount = 2;
-        init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
-        init_info.UseDynamicRendering = false;  // 先不使用 dynamic rendering
-        // 不设置 RenderPass，稍后由 hook 传入实际的 render pass
         init_info.Allocator = nullptr;
+        init_info.PipelineInfoMain.RenderPass = nullptr;
+        init_info.PipelineInfoMain.Subpass = 0;
+        init_info.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+        //init_info.CheckVkResultFn = check_vk_result;
 
         if (!ImGui_ImplVulkan_Init(&init_info)) {
             return;
         }
 
         is_imgui_init = true;
-        imgui_device = device;
-        LOGD("ImGui Vulkan initialized successfully");
+  
     }
 
     // 关闭 ImGui
@@ -411,33 +446,12 @@ class ApiHookInstance {
             ImGui_ImplVulkan_Shutdown();
             ImGui::DestroyContext();
             is_imgui_init = false;
-            imgui_device = VK_NULL_HANDLE;
         }
-    }
-
-    // 设置 ImGui 渲染所需的 render pass 信息
-    // 在渲染之前由 hook (如 vkCmdBeginRenderPass) 设置
-    void SetImGuiRenderPass(VkRenderPass renderPass, uint32_t subpass) {
-        imgui_render_pass = renderPass;
-        imgui_subpass = subpass;
-        imgui_pipeline_needs_create = true;
     }
 
     void Render(VkCommandBuffer commandBuffer) {
         if (!is_imgui_init) return;
 
-        // 如果没有设置 render pass，无法渲染
-        if (imgui_render_pass == VK_NULL_HANDLE) return;
-
-        // 如果需要重新创建 pipeline（render pass 变化时）
-        if (imgui_pipeline_needs_create) {
-            ImGui_ImplVulkan_PipelineInfo pipeline_info = {};
-            pipeline_info.RenderPass = imgui_render_pass;
-            pipeline_info.Subpass = imgui_subpass;
-            pipeline_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
-            ImGui_ImplVulkan_CreateMainPipeline(&pipeline_info);
-            imgui_pipeline_needs_create = false;
-        }
 
         // 开始新帧
         ImGui_ImplVulkan_NewFrame();
@@ -458,6 +472,8 @@ class ApiHookInstance {
 
         frame_count++;
     }
+
+
 
    private:
     ApiHookSettings hook_settings;
@@ -492,14 +508,29 @@ class ApiHookInstance {
 
     // --- ImGui 相关 ---
     bool is_imgui_init = false;
-    VkDevice imgui_device = VK_NULL_HANDLE;
-    VkRenderPass imgui_render_pass = VK_NULL_HANDLE;
-    uint32_t imgui_subpass = 0;
-    bool imgui_pipeline_needs_create = false;
 
-    // 延迟初始化：device 已创建但 queue 尚未获取
-    bool imgui_pending_init = false;
-    VkPhysicalDevice imgui_phys_dev = VK_NULL_HANDLE;
-    VkDevice imgui_pending_device = VK_NULL_HANDLE;
+    VkPhysicalDevice phys_dev = VK_NULL_HANDLE;
+    VkInstance instance = VK_NULL_HANDLE;
+
+
     uint32_t imgui_queue_family_index = 0;
+
+    std::unordered_map<VkQueue, DeviceRenderData*> queue_map;
+
+    DeviceRenderData* GetDeviceRenderData(VkQueue queue) {
+        return queue_map[queue];
+    }
+
+    DeviceRenderData* GetDeviceRenderData(VkDevice device) {
+        for (auto& [queue, data] : queue_map) {
+            if (data->device == device) {
+                return data;
+            }
+        }
+        return nullptr;
+    }
 };
+
+
+
+

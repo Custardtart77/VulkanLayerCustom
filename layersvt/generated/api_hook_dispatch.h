@@ -746,8 +746,6 @@ VKAPI_ATTR VkBool32 VKAPI_CALL vkGetPhysicalDeviceUbmPresentationSupportSEC(VkPh
 VKAPI_ATTR void VKAPI_CALL vkDestroyDevice(VkDevice device, const VkAllocationCallbacks* pAllocator) {
     // pad: mutex
 
-    // 销毁 ImGui（在 device 销毁前）
-    ApiHookInstance::current().ShutdownImGuiVulkan();
 
     device_dispatch_table(device)->DestroyDevice(device, pAllocator);
     destroy_device_dispatch_table(get_dispatch_key(device));
@@ -760,7 +758,7 @@ VKAPI_ATTR void VKAPI_CALL vkGetDeviceQueue(VkDevice device, uint32_t queueFamil
 
     // 尝试用获取到的第一个 queue 初始化 ImGui
     if (*pQueue != VK_NULL_HANDLE) {
-        ApiHookInstance::current().TryInitImGuiWithQueue(device, *pQueue);
+        ApiHookInstance::current().PostGetDeviceQueue(device, queueFamilyIndex, queueIndex, pQueue);
     }
 }
 VKAPI_ATTR VkResult VKAPI_CALL vkQueueSubmit(VkQueue queue, uint32_t submitCount, const VkSubmitInfo* pSubmits, VkFence fence) {
@@ -1507,9 +1505,6 @@ VKAPI_ATTR void VKAPI_CALL vkCmdBeginRenderPass(VkCommandBuffer commandBuffer, c
 
 
     device_dispatch_table(commandBuffer)->CmdBeginRenderPass(commandBuffer, pRenderPassBegin, contents);
-
-    // 记录 render pass 信息供 ImGui 渲染使用
-    ApiHookInstance::current().SetImGuiRenderPass(pRenderPassBegin->renderPass, 0);
 }
 VKAPI_ATTR void VKAPI_CALL vkCmdNextSubpass(VkCommandBuffer commandBuffer, VkSubpassContents contents) {
     // pad: mutex
@@ -1520,8 +1515,6 @@ VKAPI_ATTR void VKAPI_CALL vkCmdNextSubpass(VkCommandBuffer commandBuffer, VkSub
 VKAPI_ATTR void VKAPI_CALL vkCmdEndRenderPass(VkCommandBuffer commandBuffer) {
     // pad: mutex
 
-    // 在 render pass 结束前注入 ImGui 渲染
-    ApiHookInstance::current().Render(commandBuffer);
 
     device_dispatch_table(commandBuffer)->CmdEndRenderPass(commandBuffer);
 }
@@ -1706,8 +1699,6 @@ VKAPI_ATTR void VKAPI_CALL vkCmdNextSubpass2(VkCommandBuffer commandBuffer, cons
 VKAPI_ATTR void VKAPI_CALL vkCmdEndRenderPass2(VkCommandBuffer commandBuffer, const VkSubpassEndInfo* pSubpassEndInfo) {
     // pad: mutex
 
-    // 在 render pass 结束前注入 ImGui 渲染
-    ApiHookInstance::current().Render(commandBuffer);
 
     device_dispatch_table(commandBuffer)->CmdEndRenderPass2(commandBuffer, pSubpassEndInfo);
 }
@@ -2055,6 +2046,7 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateSwapchainKHR(VkDevice device, const VkSwa
 
 
     VkResult result = device_dispatch_table(device)->CreateSwapchainKHR(device, pCreateInfo, pAllocator, pSwapchain);
+    ApiHookInstance::current().PostCreateSwapchainKHR(device, pCreateInfo, pAllocator, pSwapchain);
     return result;
 }
 VKAPI_ATTR void VKAPI_CALL vkDestroySwapchainKHR(VkDevice device, VkSwapchainKHR swapchain, const VkAllocationCallbacks* pAllocator) {
@@ -2330,8 +2322,6 @@ VKAPI_ATTR void VKAPI_CALL vkCmdNextSubpass2KHR(VkCommandBuffer commandBuffer, c
 VKAPI_ATTR void VKAPI_CALL vkCmdEndRenderPass2KHR(VkCommandBuffer commandBuffer, const VkSubpassEndInfo* pSubpassEndInfo) {
     // pad: mutex
 
-    // 在 render pass 结束前注入 ImGui 渲染
-    ApiHookInstance::current().Render(commandBuffer);
 
     device_dispatch_table(commandBuffer)->CmdEndRenderPass2KHR(commandBuffer, pSubpassEndInfo);
 }
