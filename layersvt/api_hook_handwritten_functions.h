@@ -65,6 +65,8 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateInstance(const VkInstanceCreateInfo* pCre
         initInstanceTable(*pInstance, fpGetInstanceProcAddr);
     }
 
+    ApiHookInstance::current().PostCreateInstance(pCreateInfo, pAllocator, pInstance, result);
+
     return result;
 }
 }
@@ -95,6 +97,8 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateDevice(VkPhysicalDevice physicalDevice, c
         // 存储 device 创建信息，等待 queue 获取后初始化 ImGui
         // ApiHookInstance::current().setDeviceCreateInfo(physicalDevice, *pDevice, pCreateInfo);
     }
+
+    ApiHookInstance::current().PostCreateDevice(physicalDevice, pCreateInfo, pAllocator, pDevice, result);
 
     return result;
 }

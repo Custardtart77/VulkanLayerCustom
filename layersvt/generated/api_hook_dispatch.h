@@ -27,6 +27,7 @@
 // if vk api needs to be safe, "std::lock_guard<std::mutex> lg(ApiHookInstance::current().outputMutex());" can be added before each vk* function
 VKAPI_ATTR void VKAPI_CALL vkDestroyInstance(VkInstance instance, const VkAllocationCallbacks* pAllocator) {
     // pad: mutex
+    ApiHookInstance::current().PreDestroyInstance(instance, pAllocator);
 
     auto dispatch_key = get_dispatch_key(instance);
     instance_dispatch_table(instance)->DestroyInstance(instance, pAllocator);
@@ -745,7 +746,7 @@ VKAPI_ATTR VkBool32 VKAPI_CALL vkGetPhysicalDeviceUbmPresentationSupportSEC(VkPh
 
 VKAPI_ATTR void VKAPI_CALL vkDestroyDevice(VkDevice device, const VkAllocationCallbacks* pAllocator) {
     // pad: mutex
-
+    ApiHookInstance::current().PreDestroyDevice(device, pAllocator);
 
     device_dispatch_table(device)->DestroyDevice(device, pAllocator);
     destroy_device_dispatch_table(get_dispatch_key(device));
@@ -756,10 +757,7 @@ VKAPI_ATTR void VKAPI_CALL vkGetDeviceQueue(VkDevice device, uint32_t queueFamil
 
     device_dispatch_table(device)->GetDeviceQueue(device, queueFamilyIndex, queueIndex, pQueue);
 
-    // 尝试用获取到的第一个 queue 初始化 ImGui
-    if (*pQueue != VK_NULL_HANDLE) {
-        ApiHookInstance::current().PostGetDeviceQueue(device, queueFamilyIndex, queueIndex, pQueue);
-    }
+    ApiHookInstance::current().PostGetDeviceQueue(device, queueFamilyIndex, queueIndex, pQueue);
 }
 VKAPI_ATTR VkResult VKAPI_CALL vkQueueSubmit(VkQueue queue, uint32_t submitCount, const VkSubmitInfo* pSubmits, VkFence fence) {
     // pad: mutex
@@ -2046,12 +2044,12 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateSwapchainKHR(VkDevice device, const VkSwa
 
 
     VkResult result = device_dispatch_table(device)->CreateSwapchainKHR(device, pCreateInfo, pAllocator, pSwapchain);
-    ApiHookInstance::current().PostCreateSwapchainKHR(device, pCreateInfo, pAllocator, pSwapchain);
+    ApiHookInstance::current().PostCreateSwapchainKHR(device, pCreateInfo, pAllocator, pSwapchain, result);
     return result;
 }
 VKAPI_ATTR void VKAPI_CALL vkDestroySwapchainKHR(VkDevice device, VkSwapchainKHR swapchain, const VkAllocationCallbacks* pAllocator) {
     // pad: mutex
-
+    ApiHookInstance::current().PreDestroySwapchainKHR(device, swapchain, pAllocator);
 
     device_dispatch_table(device)->DestroySwapchainKHR(device, swapchain, pAllocator);
 }
@@ -2068,10 +2066,11 @@ VKAPI_ATTR VkResult VKAPI_CALL vkAcquireNextImageKHR(VkDevice device, VkSwapchai
     return result;
 }
 VKAPI_ATTR VkResult VKAPI_CALL vkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPresentInfo) {
+    ApiHookInstance::current().PreQueuePresent(queue, pPresentInfo);
     VkResult result = device_dispatch_table(queue)->QueuePresentKHR(queue, pPresentInfo);
     // pad: mutex
     // LOGD("vkQueuePresentKHR");
-    
+    ApiHookInstance::current().PostQueuePresent(queue, pPresentInfo, result);
     return result;
 }
 VKAPI_ATTR VkResult VKAPI_CALL vkGetDeviceGroupPresentCapabilitiesKHR(VkDevice device, VkDeviceGroupPresentCapabilitiesKHR* pDeviceGroupPresentCapabilities) {

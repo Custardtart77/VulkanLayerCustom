@@ -177,7 +177,7 @@ class SwapchainRenderData {
     std::vector<VkImageView> image_view;
     std::vector<VkFramebuffer> framebuffer;
 
-    VkSwapchainKHR swap_chain;
+    VkSwapchainKHR swapchain;
     VkDevice device;
     VkRenderPass render_pass;
     uint32_t image_count;
@@ -188,27 +188,37 @@ class SwapchainRenderData {
     std::vector<VkSemaphore> render_finished_semaphore;
 
 
-    SwapchainRenderData(VkDevice, VkSwapchainKHR swapchain) : swap_chain(swapchain) {}
+    SwapchainRenderData(VkDevice device, VkSwapchainKHR swapchain, const VkSwapchainCreateInfoKHR* pCreateInfo) {
+        this->device = device;
+        this->swapchain = swapchain;
+    }
 };
 
 class DeviceRenderData {
    public:
-   VkDevice device;
-   VkPhysicalDevice physical_device;
-    uint32_t queue_family_index;
-    VkQueue queue;
+    VkDevice device;
+    VkPhysicalDevice physical_device;
+    std::unordered_map<VkQueue, uint32_t> queue_family_index_map;
+
     VkCommandPool command_pool;
+    VkDescriptorPool descriptor_pool;
 
-    SwapchainRenderData *swapchain_render_data = nullptr;
+    std::unordered_map<VkSwapchainKHR, SwapchainRenderData*> swapchain_render_data_map;
 
-    DeviceRenderData(VkDevice device, VkQueue queue, uint32_t queueFamilyIndex) : device(device), queue(queue), queue_family_index(queueFamilyIndex) {
-        VkCommandPoolCreateInfo command_pool_create_info = {};
-        command_pool_create_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-        command_pool_create_info.queueFamilyIndex = queue_family_index;
-        command_pool_create_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-        device_dispatch_table(device)->CreateCommandPool(device, &command_pool_create_info, nullptr, &command_pool);
+    DeviceRenderData(VkPhysicalDevice physicalDevice, VkDevice device) : physical_device(physicalDevice), device(device) {
+        swapchain_render_data_map.clear();
+
     }
 
+    void AddQueue(VkQueue queue, uint32_t queue_family_index) {
+        if (queue_family_index_map.count(queue) < 1) {
+            queue_family_index_map[queue] = queue_family_index;
+        }
+    }
+
+    bool HasQueue(VkQueue queue) const {
+        return queue_family_index_map.count(queue) > 0;
+    }   
 };
 
 class ApiHookSettings {
@@ -301,7 +311,6 @@ class ApiHookInstance {
 
     ApiHookSettings &settings() { return hook_settings; }
 
-    void setCmdBuffer(VkCommandBuffer cmd_buffer) { this->cmd_buffer = cmd_buffer; }
 
     VkCommandBufferLevel getCmdBufferLevel() {
         std::lock_guard<std::mutex> lg(cmd_buffer_state_mutex);
@@ -354,6 +363,7 @@ class ApiHookInstance {
             }
         }
     }
+    
 
 
 
@@ -370,20 +380,6 @@ class ApiHookInstance {
     VkInstance get_vk_instance(VkPhysicalDevice phys_dev) const {
         if (vk_instance_map.count(phys_dev) == 0) return VK_NULL_HANDLE;
         return vk_instance_map.at(phys_dev);
-    }
-
-    void PostCreateSwapchainKHR(VkDevice device, const VkSwapchainCreateInfoKHR* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkSwapchainKHR* pSwapchain) {
-        
-        DeviceRenderData* device_render_data = GetDeviceRenderData(device);
-        device_render_data->swapchain_render_data = new SwapchainRenderData(device, *pSwapchain);
-    }
-
-    void PostGetDeviceQueue(VkDevice device, uint32_t queueFamilyIndex, uint32_t queueIndex, VkQueue* pQueue) {
-        queue_map[*pQueue] = new DeviceRenderData(device, *pQueue, queueFamilyIndex);
-        if (is_imgui_init) {
-            // InitImGuiVulkan(instance, imgui_phys_dev, device, imgui_queue_family_index, queue);
-            is_imgui_init = false;
-        }
     }
 
     // --- ImGui Vulkan 初始化 ---
@@ -449,11 +445,12 @@ class ApiHookInstance {
         }
     }
 
-    void Render(VkCommandBuffer commandBuffer) {
+    void Render(VkQueue queue, const VkPresentInfoKHR* pPresentInfo) {
         if (!is_imgui_init) return;
 
 
         // 开始新帧
+        /*
         ImGui_ImplVulkan_NewFrame();
         ImGui::NewFrame();
 
@@ -471,9 +468,88 @@ class ApiHookInstance {
         }
 
         frame_count++;
+        */
+    }
+
+    void PostQueuePresent(VkQueue queue, const VkPresentInfoKHR* pPresentInfo, VkResult result) {
+        
+    }
+
+    void PreQueuePresent(VkQueue queue, const VkPresentInfoKHR* pPresentInfo) {
+
+    }
+
+    // 管理Instance(仅一个) device(有多个) queue(一个device对应多个) swapchain(一个device对应多个)
+    void PostCreateInstance(const VkInstanceCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkInstance* pInstance, VkResult result) {
+        if (result == VK_SUCCESS && *pInstance != VK_NULL_HANDLE) {
+            instance = *pInstance;
+            LOGD("PostCreateInstance success! instance=%p", instance);
+        }
+    }
+
+    void PreDestroyInstance(VkInstance instance, const VkAllocationCallbacks* pAllocator) {
+        instance = VK_NULL_HANDLE;
+        LOGD("PreDestroyInstance called! instance=%p", instance);
     }
 
 
+    void PostCreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo* pCreateInfo,
+                                              const VkAllocationCallbacks* pAllocator, VkDevice* pDevice, VkResult result) {
+        if (result == VK_SUCCESS && *pDevice != VK_NULL_HANDLE) {
+            // 创建DeviceRenderData并存储到map中
+            device_render_data_map[*pDevice] = new DeviceRenderData(physicalDevice, *pDevice);
+            LOGD("PostCreateDevice success! device=%p", *pDevice);
+        }
+    }
+
+    void PreDestroyDevice(VkDevice device, const VkAllocationCallbacks* pAllocator) {
+        // 从map中删除对应的 DeviceRenderData
+        if (device_render_data_map.count(device) > 0) {
+            delete device_render_data_map[device];
+            device_render_data_map.erase(device);
+            // 好像没触发
+            LOGD("PreDestroyDevice called! device=%p", device);
+        }
+    }
+
+    void PostGetDeviceQueue(VkDevice device, uint32_t queueFamilyIndex, uint32_t queueIndex, VkQueue* pQueue) {
+        // 获取对应的 DeviceRenderData，存储 queue 和 queue family index 的映射
+        /*
+        if (device_render_data_map.count(device) > 0) {
+            device_render_data_map[device]->AddQueue(*pQueue, queueFamilyIndex);
+        }
+        */
+        DeviceRenderData* device_render_data = GetDeviceRenderData(device);
+        if (device_render_data) {
+            device_render_data->AddQueue(*pQueue, queueFamilyIndex);
+            LOGD("PostGetDeviceQueue called! device=%p, queue=%p, queueFamilyIndex=%u, queueIndex=%u", device, *pQueue, queueFamilyIndex, queueIndex);
+        }
+    }
+
+    void PostCreateSwapchainKHR(VkDevice device, const VkSwapchainCreateInfoKHR* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkSwapchainKHR* pSwapchain, VkResult result) {
+        // 获取对应的 DeviceRenderData，创建 SwapchainRenderData 并存储到 DeviceRenderData 中
+        if (result == VK_SUCCESS && pSwapchain != nullptr && *pSwapchain != VK_NULL_HANDLE) {
+            DeviceRenderData* device_render_data = GetDeviceRenderData(device);
+            if (device_render_data && pCreateInfo != nullptr) {
+                // 有必要Remove? 先不remove
+                // device_render_data->RemoveSwapchainRenderData(*pSwapchain);
+
+                device_render_data->swapchain_render_data_map[*pSwapchain] = new SwapchainRenderData(device, *pSwapchain, pCreateInfo);
+                LOGD("PostCreateSwapchainKHR called! device=%p, swapchain=%p", device, *pSwapchain);
+            }
+        }
+    }
+
+    void PreDestroySwapchainKHR(VkDevice device, VkSwapchainKHR swapchain, const VkAllocationCallbacks* pAllocator) {
+        // 获取对应的 DeviceRenderData，销毁 SwapchainRenderData 并从 DeviceRenderData 中删除
+        DeviceRenderData* device_render_data = GetDeviceRenderData(device);
+        if (device_render_data && device_render_data->swapchain_render_data_map.count(swapchain) > 0) {
+            delete device_render_data->swapchain_render_data_map[swapchain];
+            device_render_data->swapchain_render_data_map.erase(swapchain);
+
+            LOGD("PreDestroySwapchainKHR called! device=%p, swapchain=%p", device, swapchain);
+        }
+    }
 
    private:
     ApiHookSettings hook_settings;
@@ -506,24 +582,22 @@ class ApiHookInstance {
 
     std::ofstream out_file;
 
+
+
+
     // --- ImGui 相关 ---
     bool is_imgui_init = false;
 
-    VkPhysicalDevice phys_dev = VK_NULL_HANDLE;
     VkInstance instance = VK_NULL_HANDLE;
-
-
-    uint32_t imgui_queue_family_index = 0;
-
-    std::unordered_map<VkQueue, DeviceRenderData*> queue_map;
-
-    DeviceRenderData* GetDeviceRenderData(VkQueue queue) {
-        return queue_map[queue];
-    }
+    std::unordered_map<VkDevice, DeviceRenderData*> device_render_data_map;
 
     DeviceRenderData* GetDeviceRenderData(VkDevice device) {
-        for (auto& [queue, data] : queue_map) {
-            if (data->device == device) {
+        return device_render_data_map[device];
+    }
+
+    DeviceRenderData* GetDeviceRenderData(VkQueue queue) {
+        for (auto& [device, data] : device_render_data_map) {
+            if (data->HasQueue(queue)) {
                 return data;
             }
         }
